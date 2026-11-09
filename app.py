@@ -1,0 +1,92 @@
+import os
+import streamlit as st
+from google import genai
+from google.genai import types
+
+st.set_page_config(
+    page_title="AI Tutor - SciLifeLab Serve",
+    page_icon="🎓",
+    layout="centered"
+)
+
+st.title("🎓 Socratic AI Tutor")
+st.caption("Powered by Gemini • Hosted on SciLifeLab Serve")
+
+TUTOR_SYSTEM_INSTRUCTION = """You are an expert, encouraging Socratic tutor. 
+Your primary goal is to guide students to discover solutions and understand core concepts independently.
+
+Pedagogical Rules:
+1. Never provide the direct solution, full answers, or completed assignments.
+2. Guide the student step-by-step using probing questions, hints, and analogies.
+3. Ask ONLY ONE question per response to prevent cognitive overload.
+4. If the student asks for the answer directly, politely decline and offer a simpler hint or break the problem into a smaller sub-step.
+5. If the student makes an error, highlight the reasoning gap gently and ask them to reflect on that step.
+6. Acknowledge and reinforce progress before moving to the next concept."""
+
+api_key = os.environ.get("GEMINI_API_KEY")
+
+with st.sidebar:
+    st.header("Configuration")
+    if not api_key:
+        api_key = st.text_input(
+            "Gemini API Key",
+            type="password",
+            help="Enter your Gemini API key or supply it as the GEMINI_API_KEY environment variable."
+        )
+    model_name = st.selectbox(
+        "Model",
+        ["gemini-2.5-flash", "gemini-2.5-pro", "gemini-1.5-flash"],
+        index=0
+    )
+    if st.button("Reset Conversation", use_container_width=True):
+        st.session_state.messages = []
+        st.rerun()
+
+if not api_key:
+    st.info("Please enter your Gemini API key in the sidebar to start tutoring.", icon="🔑")
+    st.stop()
+
+client = genai.Client(api_key=api_key)
+
+if "messages" not in st.session_state:
+    st.session_state.messages = []
+
+for msg in st.session_state.messages:
+    with st.chat_message(msg["role"]):
+        st.markdown(msg["content"])
+
+if prompt := st.chat_input("What problem or topic would you like to explore?"):
+    st.session_state.messages.append({"role": "user", "content": prompt})
+    with st.chat_message("user"):
+        st.markdown(prompt)
+
+    contents = []
+    for m in st.session_state.messages:
+        role = "user" if m["role"] == "user" else "model"
+        contents.append(
+            types.Content(
+                role=role,
+                parts=[types.Part.from_text(text=m["content"])]
+            )
+        )
+
+    with st.chat_message("assistant"):
+        response_placeholder = st.empty()
+        full_response = ""
+        try:
+            response_stream = client.models.generate_content_stream(
+                model=model_name,
+                contents=contents,
+                config=types.GenerateContentConfig(
+                    system_instruction=TUTOR_SYSTEM_INSTRUCTION,
+                    temperature=0.7,
+                ),
+            )
+            for chunk in response_stream:
+                if chunk.text:
+                    full_response += chunk.text
+                    response_placeholder.markdown(full_response + "▌")
+            response_placeholder.markdown(full_response)
+            st.session_state.messages.append({"role": "assistant", "content": full_response})
+        except Exception as e:
+            st.error(f"Error calling Gemini API: {e}")
