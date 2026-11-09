@@ -35,7 +35,7 @@ with st.sidebar:
         )
     model_name = st.selectbox(
         "Model",
-        ["gemini-2.5-flash", "gemini-2.5-pro", "gemini-1.5-flash"],
+        ["gemini-3.8-flash", "gemini-2.5-pro", "gemini-1.5-flash"],
         index=0
     )
     if st.button("Reset Conversation", use_container_width=True):
